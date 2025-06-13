@@ -7,7 +7,6 @@ use iroh::Endpoint;
 use tauri::Emitter;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
-use tokio::time::interval;
 use tokio::time::Instant;
 
 use crate::state::Peer;
@@ -96,8 +95,9 @@ pub async fn background_cleanup_task(
     app: AppHandle,
     timeout: tokio::time::Duration,
 ) {
+    let mut interval = tokio::time::interval(timeout);
     loop {
-        interval(timeout); // Similar to sleep
+        interval.tick().await;
         let mut peers_lock = peers.lock().await;
 
         let left_peers: Vec<Peer> = peers_lock
