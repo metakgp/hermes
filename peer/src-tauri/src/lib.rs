@@ -2,6 +2,7 @@ mod network;
 mod state;
 mod utils;
 use tokio::sync::Mutex;
+use tracing::instrument;
 use std::sync::Arc;
 
 use crate::state::{AppState, PeerSerializable, File, AppStateWrapper};
