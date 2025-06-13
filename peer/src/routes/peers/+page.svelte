@@ -35,6 +35,9 @@
   listen<[Peer, Peer]>('peer::username_changed', () => {
     getPeers();
   });
+  listen<Peer>('peer::left', () => {
+    getPeers();
+  });
   function getPeers() {
     invoke("get_peers")
       .then((data) => {

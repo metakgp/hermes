@@ -1,15 +1,18 @@
 use std::sync::Arc;
 
-
 use anyhow::anyhow;
 use anyhow::Result;
 use futures_lite::StreamExt;
 use iroh::Endpoint;
 use tauri::Emitter;
 use tauri::{AppHandle, Manager};
+use tokio::sync::Mutex;
+use tokio::time::interval;
+use tokio::time::Instant;
 
 use crate::state::Peer;
-use crate::AppStateWrapper;
+use crate::state::PeerSerializable;
+use crate::state::AppStateWrapper;
 
 pub async fn setup_iroh() -> Result<Endpoint> {
     // TODO set username on discovery
@@ -27,6 +30,11 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
     let mut stream = state.endpoint.as_mut().unwrap().discovery_stream();
     let peers = Arc::clone(&state.peers);
     drop(state);
+    let cleaner_handle = tokio::spawn(background_cleanup_task(
+        Arc::clone(&peers),
+        app.clone(),
+        tokio::time::Duration::from_secs(10), // TODO make this configurable
+    ));
 
     while let Some(event) = stream.next().await {
         match event {
@@ -46,21 +54,27 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
                 let peer = Peer {
                     node_id,
                     username: user_data.to_owned(),
+                    last_seen: Instant::now(),
                 };
 
                 {
-                    let mut peers_lock = peers.lock().await;
-                    if let Some(old_peer) = peers_lock.iter_mut().find(|p| p.node_id == peer.node_id && p.username != peer.username) {
-                        let _ =
-                            app.emit("peer::username_changed", (old_peer.clone(), peer.clone()));
+                    let mut peer_lock = peers.lock().await;
+                    if let Some(old_peer) = peer_lock
+                        .iter_mut()
+                        .find(|p| p.node_id == peer.node_id && p.username != peer.username)
+                    {
+                        let payload: (PeerSerializable, PeerSerializable) =
+                            (old_peer.clone().into(), peer.clone().into());
+                        let _ = app.emit("peer::username_changed", payload);
                         println!(
                             "Peer username changed: {} -> {}",
                             old_peer.username, peer.username
                         );
                         *old_peer = peer;
-                    } else if !peers_lock.iter().any(|p| p.node_id == peer.node_id) {
-                        peers_lock.push(peer.clone());
-                        let _ = app.emit("peer::added", &peer);
+                    } else if !peer_lock.iter().any(|p| p.node_id == peer.node_id) {
+                        peer_lock.push(peer.clone());
+                        let payload: PeerSerializable = peer.clone().into();
+                        let _ = app.emit("peer::added", payload);
                         println!("New peer added: {}", peer.username);
                     }
                 }
@@ -70,6 +84,33 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
             }
         }
     }
+    cleaner_handle.abort();
 
     Ok(())
+}
+
+/// Periodically checks for peers that have not been seen within the timeout period,
+/// removes them from the tracker, and emits a "peer::left" event for each.
+pub async fn background_cleanup_task(
+    peers: Arc<Mutex<Vec<Peer>>>,
+    app: AppHandle,
+    timeout: tokio::time::Duration,
+) {
+    loop {
+        interval(timeout); // Similar to sleep
+        let mut peers_lock = peers.lock().await;
+
+        let left_peers: Vec<Peer> = peers_lock
+            .iter()
+            .filter(|peer| Instant::now().duration_since(peer.last_seen) > timeout)
+            .cloned()
+            .collect();
+
+        for left_peer in left_peers {
+            peers_lock.retain(|p| p.node_id != left_peer.node_id);
+            let payload: PeerSerializable = left_peer.clone().into();
+            let _ = app.emit("peer::left", payload);
+            println!("Peer left: {}", left_peer.username);
+        }
+    }
 }

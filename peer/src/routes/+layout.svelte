@@ -23,6 +23,11 @@
       description: `Node ID: ${event.payload[0].node_id}`,
     });
   });
+  listen<Peer>('peer::left', (event) => {
+    toast.info(`Peer left: ${event.payload.username}`, {
+      description: `Node ID: ${event.payload.node_id}`,
+    });
+  });
 
 </script>
 

@@ -1,5 +1,4 @@
 use anyhow::Result;
-use iroh::endpoint::Source;
 use std::{collections::HashSet, path::PathBuf};
 use tauri::AppHandle;
 use tokio::sync::Mutex;
@@ -16,6 +15,8 @@ pub struct AppState {
     discovery_task: Option<tokio::task::JoinHandle<()>>,
     pub peers: Arc<Mutex<Vec<Peer>>>,
 }
+
+pub struct AppStateWrapper(pub Arc<Mutex<AppState>>);
 
 impl AppState {
     pub fn new() -> Result<Self> {
@@ -104,11 +105,11 @@ impl AppState {
         &self.username
     }
 
-    pub async fn get_peers(&mut self, app: AppHandle) -> Result<Vec<Peer>> {
+    pub async fn get_peers(&mut self, app: AppHandle) -> Result<Vec<PeerSerializable>> {
         if self.discovery_task.is_none() {
             self.start_discovery(app);
         }
-        Ok(self.peers.lock().await.clone())
+        Ok(self.peers.lock().await.clone().iter().map(|p| p.clone().into()).collect())
     }
     pub fn start_discovery(&mut self, app: AppHandle) {
         if let Some(guard) = &self.discovery_task {
@@ -138,9 +139,26 @@ pub struct File {
     size: String,
 }
 
-#[derive(Clone, serde::Serialize, Debug)]
+#[derive(Clone, Debug)]
 pub struct Peer {
     pub username: String,
     pub node_id: iroh::NodeId,
+    pub last_seen: tokio::time::Instant,
+}
+
+
+#[derive(Clone, serde::Serialize, Debug)]
+pub struct PeerSerializable {
+    pub username: String,
+    pub node_id: iroh::NodeId,
+}
+
+impl From<Peer> for PeerSerializable {
+    fn from(peer: Peer) -> Self {
+        Self {
+            username: peer.username,
+            node_id: peer.node_id,
+        }
+    }
 }
 
