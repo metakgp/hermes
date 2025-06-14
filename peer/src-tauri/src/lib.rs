@@ -4,12 +4,10 @@ mod utils;
 use tokio::sync::Mutex;
 use std::sync::Arc;
 
-use crate::state::{AppState, File, Peer};
+use crate::state::{AppState, PeerSerializable, File, AppStateWrapper};
 use anyhow::Result;
 use tauri::Manager;
 
-// in all commands replace AppState by AppStateWrapper
-struct AppStateWrapper(Arc<Mutex<AppState>>);
 
 #[tauri::command]
 async fn get_paths(state: tauri::State<'_, AppStateWrapper>) -> Result<Vec<String>, String> {
@@ -64,7 +62,7 @@ async fn clear_files(state: tauri::State<'_, AppStateWrapper>) -> Result<(), Str
 }
 
 #[tauri::command]
-async fn get_peers(state: tauri::State<'_, AppStateWrapper>, app: tauri::AppHandle) -> Result<Vec<Peer>, String> {
+async fn get_peers(state: tauri::State<'_, AppStateWrapper>, app: tauri::AppHandle) -> Result<Vec<PeerSerializable>, String> {
     let mut state = state.0.lock().await;
     state.get_peers(app).await.map_err(|err| err.to_string())
 }
