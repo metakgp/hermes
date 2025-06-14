@@ -4,7 +4,8 @@ use tauri::AppHandle;
 use tokio::sync::Mutex;
 use std::sync::Arc;
 
-use crate::network::{setup_iroh, run_discovery};
+use crate::network::discovery::run_discovery;
+use crate::network::setup_iroh;
 
 #[derive(Debug)]
 pub struct AppState {
