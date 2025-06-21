@@ -5,18 +5,16 @@
   import File from "@lucide/svelte/icons/file";
   import Handshake from "@lucide/svelte/icons/handshake";
   import MessageSquareText from "@lucide/svelte/icons/message-square-text";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { invoke } from "@tauri-apps/api/core";
   import { listen } from "@tauri-apps/api/event";
-    import { get } from "svelte/store";
+  import { goto } from "$app/navigation";
 
   interface Peer {
     username: string;
     node_id: string;
   }
-  let peers: Peer[] = $state([ ]);
+  let peers: Peer[] = $state([]);
   $effect(() => {
     console.log("PeersTab component mounted");
     invoke("get_peers")
@@ -28,14 +26,14 @@
         console.error("Error fetching peers:", error);
       });
   });
-  
-  listen<Peer>('peer::added', () => {
+
+  listen<Peer>("peer::added", () => {
     getPeers();
   });
-  listen<[Peer, Peer]>('peer::username_changed', () => {
+  listen<[Peer, Peer]>("peer::username_changed", () => {
     getPeers();
   });
-  listen<Peer>('peer::left', () => {
+  listen<Peer>("peer::left", () => {
     getPeers();
   });
   function getPeers() {
@@ -46,6 +44,15 @@
       })
       .catch((error) => {
         console.error("Error fetching peers:", error);
+      });
+  }
+  function pingPeer(nodeId: string) {
+    invoke("ping_peer", { peerId: nodeId })
+      .then((response) => {
+        console.log("Ping response:", response);
+      })
+      .catch((error) => {
+        console.error("Error pinging peer:", error);
       });
   }
 </script>
@@ -75,10 +82,14 @@
               <DropdownMenu.Content>
                 <DropdownMenu.Group>
                   <DropdownMenu.Item
-                    ><MessageSquareText /> Shared Files</DropdownMenu.Item
+                    ><a href={`/peer/${peer.node_id}`}><File /> Shared Files></a
+                    ></DropdownMenu.Item
                   >
                   <DropdownMenu.Item
                     ><Handshake /> Add as Friend</DropdownMenu.Item
+                  >
+                  <DropdownMenu.Item onclick={() => pingPeer(peer.node_id)}
+                    ><Handshake /> Ping</DropdownMenu.Item
                   >
                   <DropdownMenu.Item
                     ><MessageSquareText /> Message</DropdownMenu.Item

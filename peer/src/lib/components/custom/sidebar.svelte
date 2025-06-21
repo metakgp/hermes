@@ -59,39 +59,3 @@
   </Sidebar.Content>
 </Sidebar.Root> 
 </div>
-<!--     <div class="px-3 py-2"> -->
-<!--       <h2 class="mb-2 px-4 text-lg font-semibold tracking-tight">Folders</h2> -->
-<!--       <ScrollArea class="h-[120px] px-1"> -->
-<!--         <div class="space-y-1 p-2"> -->
-<!--           {#if $foldersStore.length === 0} -->
-<!--             <div class="text-gray-400 px-2">No folders</div> -->
-<!--           {:else} -->
-<!--             {#each $foldersStore as folder} -->
-<!--               <Button variant="ghost" class="w-full justify-start font-normal"> -->
-<!--                 <Folder class="mr-2 size-4" /> {folder} -->
-<!--               </Button> -->
-<!--             {/each} -->
-<!--           {/if} -->
-<!--         </div> -->
-<!--       </ScrollArea> -->
-<!--     </div> -->
-<!---->
-<!--     <div class="px-3 py-2"> -->
-<!--       <h2 class="mb-2 px-4 text-lg font-semibold tracking-tight">Files</h2> -->
-<!--       <ScrollArea class="h-[120px] px-1"> -->
-<!--         <div class="space-y-1 p-2"> -->
-<!--           {#if $filesStore.length === 0} -->
-<!--             <div class="text-gray-400 px-2">No files</div> -->
-<!--           {:else} -->
-<!--             {#each $filesStore as file} -->
-<!--               <Button variant="ghost" class="w-full justify-start font-normal"> -->
-<!--                 <FileIcon class="mr-2 size-4" /> {file.name} -->
-<!--               </Button> -->
-<!--             {/each} -->
-<!--           {/if} -->
-<!--         </div> -->
-<!--       </ScrollArea> -->
-<!--     </div> -->
-<!--   </div> -->
-<!-- </div> -->
-<!---->

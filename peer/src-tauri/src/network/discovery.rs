@@ -21,7 +21,7 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
 
     let mut state = state_lock.0.lock().await;
 
-    let mut stream = state.endpoint.as_mut().unwrap().discovery_stream();
+    let mut stream = state.router.as_mut().unwrap().endpoint().discovery_stream();
     let peers = Arc::clone(&state.peers);
     drop(state);
     let cleaner_handle = tokio::spawn(background_cleanup_task(
@@ -33,7 +33,8 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
     while let Some(event) = stream.next().await {
         match event {
             Ok(discovery_item) => {
-                let node_id = discovery_item.node_id();
+                let node_addr = discovery_item.clone().into_node_addr();
+
                 let user_data = discovery_item
                     .node_info()
                     .data
@@ -46,17 +47,16 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
                 //    continue;
                 //}
                 let peer = Peer {
-                    node_id,
+                    node_addr,
                     username: user_data.to_owned(),
                     last_seen: Instant::now(),
                 };
 
                 {
                     let mut peer_lock = peers.lock().await;
-                    if let Some(old_peer) = peer_lock
-                        .iter_mut()
-                        .find(|p| p.node_id == peer.node_id && p.username != peer.username)
-                    {
+                    if let Some(old_peer) = peer_lock.iter_mut().find(|p| {
+                        p.node_addr.node_id == peer.node_addr.node_id && p.username != peer.username
+                    }) {
                         let payload: (PeerSerializable, PeerSerializable) =
                             (old_peer.clone().into(), peer.clone().into());
                         let _ = app.emit("peer::username_changed", payload);
@@ -65,11 +65,22 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
                             old_peer.username, peer.username
                         );
                         *old_peer = peer;
-                    } else if !peer_lock.iter().any(|p| p.node_id == peer.node_id) {
+                    } else if !peer_lock
+                        .iter()
+                        .any(|p| p.node_addr.node_id == peer.node_addr.node_id)
+                    {
                         peer_lock.push(peer.clone());
                         let payload: PeerSerializable = peer.clone().into();
                         let _ = app.emit("peer::added", payload);
                         info!("New peer added: {}", peer.username);
+                    } else {
+                        // Update last seen time for existing peer
+                        if let Some(existing_peer) = peer_lock
+                            .iter_mut()
+                            .find(|p| p.node_addr.node_id == peer.node_addr.node_id)
+                        {
+                            existing_peer.last_seen = Instant::now();
+                        }
                     }
                 }
             }
@@ -85,7 +96,7 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
 
 /// Periodically checks for peers that have not been seen within the timeout period,
 /// removes them from the tracker, and emits a "peer::left" event for each.
-#[instrument(skip(peers, app), ret, err)]
+#[instrument(skip(peers, app))]
 pub async fn background_cleanup_task(
     peers: Arc<Mutex<Vec<Peer>>>,
     app: AppHandle,
@@ -103,7 +114,7 @@ pub async fn background_cleanup_task(
             .collect();
 
         for left_peer in left_peers {
-            peers_lock.retain(|p| p.node_id != left_peer.node_id);
+            peers_lock.retain(|p| p.node_addr.node_id != left_peer.node_addr.node_id);
             let payload: PeerSerializable = left_peer.clone().into();
             let _ = app.emit("peer::left", payload);
             info!("Peer left: {}", left_peer.username);
