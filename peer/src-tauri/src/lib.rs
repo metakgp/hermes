@@ -1,7 +1,7 @@
 mod network;
 mod state;
 mod utils;
-use tracing::instrument;
+use tracing::{instrument, trace, debug, info, error, warn};
 use tokio::sync::Mutex;
 use std::sync::Arc;
 
@@ -74,6 +74,18 @@ async fn get_peers(state: tauri::State<'_, AppStateWrapper>, app: tauri::AppHand
     state.get_peers(app).await.map_err(|err| err.to_string())
 }
 
+#[tauri::command]
+fn log(level: String, message: String, context: Option<serde_json::Value>) {
+    match level.as_str() {
+        "error" => error!(%message, ?context),
+        "warn" => warn!(%message, ?context),
+        "info" => info!(%message, ?context),
+        "debug" => debug!(%message, ?context),
+        "trace" => trace!(%message, ?context),
+        _ => info!(%message, ?context),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -95,7 +107,8 @@ pub fn run() {
             add_path,
             get_files,
             clear_files,
-            get_peers
+            get_peers,
+            log
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
