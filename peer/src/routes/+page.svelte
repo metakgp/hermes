@@ -3,6 +3,7 @@
   import { Button } from "$lib/components/ui/button/index.js";
   import { Label } from "$lib/components/ui/label/index.js";
   import { invoke } from "@tauri-apps/api/core";
+  import { toast } from "svelte-sonner";
   let username = $state("");
   let isUsernameValid = $state(false);
   invoke("get_username")
@@ -15,7 +16,7 @@
       }
     })
     .catch((error) => {
-      console.error("Error fetching username:", error);
+      toast.error("Error fetching username: " + error);
     });
 
   $effect(() => {
@@ -29,13 +30,13 @@
     if (isUsernameValid) {
       invoke("set_username", { username })
         .then(() => {
-          console.log("Username set successfully:", username);
+          toast.success("Username set successfully!");
         })
         .catch((error) => {
-          console.error("Error setting username:", error);
+          toast.error("Error setting username: " + error);
         });
     } else {
-      console.error("Invalid username");
+      toast.error("Username must be between 3 and 20 characters.");
     }
   }
 </script>
@@ -56,4 +57,3 @@
     Enter your username. Between 3 and 20 characters.
   </p>
 </div>
-

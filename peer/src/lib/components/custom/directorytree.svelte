@@ -6,7 +6,6 @@
     Search,
     ChevronRight,
     ChevronDown,
-    Download,
     ArrowUpDown,
     ArrowUp,
     ArrowDown,
@@ -27,18 +26,20 @@
     modified?: Date;
   }
 
-  interface DirectoryTreeProps<TreeNode> {
+  interface DirectoryTreeProps {
     data: TreeNode[];
     selectable?: boolean;
     searchable?: boolean;
     onNodeClick?: (node: TreeNode) => void;
+    selectedItemsActions?: Snippet<TreeNode[]>;
   }
 
   let {
     data,
     selectable = false,
     searchable = true,
-  }: DirectoryTreeProps<TreeNode> = $props();
+    selectedItemsActions = undefined,
+  }: DirectoryTreeProps = $props();
 
   type SortField = "name" | "size" | "modified";
   type SortDirection = "asc" | "desc";
@@ -59,7 +60,7 @@
   });
 
   // function to count files and folders in the tree returns a (number, number)
-  function countFilesAndFolders(nodes: TreeNode[]): [number, number] {
+  function countFilesAndFolders(nodes: Array<TreeNode>): [number, number] {
     let fileCount = 0;
     let folderCount = 0;
     for (const node of nodes) {
@@ -209,10 +210,6 @@
     }
   }
 
-  function getSortIcon(field: SortField) {
-    if (sortField !== field) return ArrowUpDown;
-    return sortDirection === "asc" ? ArrowUp : ArrowDown;
-  }
 
   function flattenTree(
     nodes: TreeNode[],
@@ -373,13 +370,6 @@
     const i = Math.floor(Math.log(bytes) / Math.log(1024));
     return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${sizes[i]}`;
   }
-  // Action handlers
-  function handleDownload() {
-    console.log(
-      "Download action triggered for selected nodes:",
-      selectedNodesList,
-    );
-  }
   function clearSelection() {
     selectedNodes = new Set();
   }
@@ -412,8 +402,19 @@
     return selectedNodes.size === allNodeIds.size;
   }
 </script>
+{#snippet sortIcon(field: SortField)}
+{#if sortField === field}
+  {#if sortDirection === "asc"}
+    <ArrowUp class="h-3 w-3" />
+  {:else}
+    <ArrowDown class="h-3 w-3" />
+  {/if}
+{:else}
+  <ArrowUpDown class="h-3 w-3" />
+{/if}
+{/snippet}
 
-<div class="min-w-max m-4">
+<div class="max-w-full m-4 relative">
   {#if searchable}
     <div class="flex items-center py-4">
       <div class="relative max-w-sm">
@@ -439,18 +440,7 @@
         </span>
 
         <div class="flex items-center gap-1 ml-4">
-          {#snippet selectedItemsActions()}
-            <Button
-              variant="outline"
-              size="sm"
-              onclick={handleDownload}
-              disabled={selectedNodes.size === 0}
-            >
-              <Download class="h-4 w-4 mr-1" />
-              Download
-            </Button>
-          {/snippet}
-          {@render selectedItemsActions()}
+          {@render selectedItemsActions?.(selectedNodesList)}
         </div>
       </div>
 
@@ -465,7 +455,7 @@
     </div>
   {/if}
 
-  <div class="rounded-md border">
+  <div class="rounded-md border overflow-auto">
     <!-- Header Row -->
     <div class="border-b bg-muted/30">
       <div class="flex items-center gap-2 p-2 font-medium text-sm">
@@ -499,7 +489,7 @@
           onclick={() => handleSort("name")}
         >
           <span class="mr-2">Name</span>
-          <svelte:component this={getSortIcon("name")} class="h-3 w-3" />
+          {@render sortIcon("name")}
         </Button>
 
         <!-- Size Column -->
@@ -510,7 +500,7 @@
           onclick={() => handleSort("size")}
         >
           <span class="mr-2">Size</span>
-          <svelte:component this={getSortIcon("size")} class="h-3 w-3" />
+          {@render sortIcon("size")}
         </Button>
 
         <!-- Modified Column -->
@@ -521,7 +511,7 @@
           onclick={() => handleSort("modified")}
         >
           <span class="mr-2">Modified</span>
-          <svelte:component this={getSortIcon("modified")} class="h-3 w-3" />
+          {@render sortIcon("modified")}
         </Button>
       </div>
     </div>
