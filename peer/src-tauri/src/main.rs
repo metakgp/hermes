@@ -5,12 +5,12 @@ use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
 
 fn setup_logging() -> Option<WorkerGuard> {
+    let subscriber = tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env())
+        .with_line_number(true);
+
     if cfg!(debug_assertions) {
-        tracing_subscriber::fmt()
-            .with_writer(std::io::stdout)
-            .with_line_number(true)
-            .with_env_filter(EnvFilter::from_default_env())
-            .init();
+        subscriber.init();
         None
     } else {
         let (writer, _guard) = {
@@ -18,11 +18,9 @@ fn setup_logging() -> Option<WorkerGuard> {
             tracing_appender::non_blocking(file_appender)
         };
 
-        tracing_subscriber::fmt()
+        subscriber
             .with_writer(writer)
-            .with_env_filter(EnvFilter::from_default_env())
             .with_ansi(false)
-            .with_line_number(true)
             .json()
             .init();
         Some(_guard)
