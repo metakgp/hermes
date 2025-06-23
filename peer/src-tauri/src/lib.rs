@@ -9,13 +9,13 @@ use crate::state::{AppState, PeerSerializable, File, AppStateWrapper};
 use anyhow::Result;
 use tauri::Manager;
 
-#[instrument(skip_all, level = "debug", ret, err)]
+#[instrument(skip_all, ret, err)]
 #[tauri::command]
 async fn get_paths(state: tauri::State<'_, AppStateWrapper>) -> Result<Vec<String>, String> {
     Ok(state.0.lock().await.shared_path_string())
 }
 
-#[instrument(skip(state), level = "debug", ret, err)]
+#[instrument(skip(state), ret, err)]
 #[tauri::command]
 async fn add_path(
     path: String,
@@ -43,7 +43,7 @@ async fn set_username(
     Ok(())
 }
 
-#[instrument(skip_all, level = "debug", ret, err)]
+#[instrument(skip_all, ret, err)]
 #[tauri::command]
 async fn get_username(
     state: tauri::State<'_, AppStateWrapper>,
@@ -52,14 +52,14 @@ async fn get_username(
     state.get_username().clone().ok_or_else(|| "Username not set".to_string())
 }
 
-#[instrument(skip_all, level = "debug", ret, err)]
+#[instrument(skip_all, ret, err)]
 #[tauri::command]
 async fn get_files(state: tauri::State<'_, AppStateWrapper>) -> Result<Vec<File>, String> {
     let state = state.0.lock().await;
     Ok(state.files.clone())
 }
 
-#[instrument(skip_all, level = "debug", ret, err)]
+#[instrument(skip_all, ret, err)]
 #[tauri::command]
 async fn clear_files(state: tauri::State<'_, AppStateWrapper>) -> Result<(), String> {
     let mut state = state.0.lock().await;
@@ -77,12 +77,12 @@ async fn get_peers(state: tauri::State<'_, AppStateWrapper>, app: tauri::AppHand
 #[tauri::command]
 fn log(level: String, message: String, context: Option<serde_json::Value>) {
     match level.as_str() {
-        "error" => error!(%message, ?context),
-        "warn" => warn!(%message, ?context),
-        "info" => info!(%message, ?context),
-        "debug" => debug!(%message, ?context),
-        "trace" => trace!(%message, ?context),
-        _ => info!(%message, ?context),
+        "error" => error!(message, ?context),
+        "warn" => warn!(message, ?context),
+        "info" => info!(message, ?context),
+        "debug" => debug!(message, ?context),
+        "trace" => trace!(message, ?context),
+        _ => info!(message, ?context),
     }
 }
 
