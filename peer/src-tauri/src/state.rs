@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{Context, Result};
 use iroh::protocol::Router;
 use iroh::Endpoint;
 use std::sync::Arc;
@@ -37,12 +37,9 @@ impl AppState {
         if self.router.is_some() {
             return Ok(());
         }
-        let blobs_data_dir = crate::global::APP_DATA_DIR
-            .join("blobs");
+        let blobs_data_dir = crate::global::APP_DATA_DIR.join("blobs");
         let endpoint = Endpoint::builder().discovery_local_network().bind().await?;
-        let blobs = Blobs::persistent(&blobs_data_dir)
-        .await?
-        .build(&endpoint);
+        let blobs = Blobs::persistent(&blobs_data_dir).await?.build(&endpoint);
 
         // TODO Recover uploaded_files from previous session
         let proto = FileProtocol::new(blobs.client().clone(), app);
@@ -55,7 +52,6 @@ impl AppState {
         self.file_protocol = Some(proto.clone());
         Ok(())
     }
-
 
     pub fn update_username(&mut self, username: String) -> Result<()> {
         match &mut self.router {
@@ -108,8 +104,22 @@ impl AppState {
 
         self.discovery_task = Some(handle);
     }
-}
 
+    pub async fn get_node_addr(&self, node_id: iroh::NodeId) -> Result<iroh::NodeAddr> {
+        self.peers
+            .lock()
+            .await
+            .iter()
+            .find_map(|peer| {
+                if peer.node_addr.node_id == node_id {
+                    Some(peer.node_addr.clone())
+                } else {
+                    None
+                }
+            })
+            .context("Peer not found")
+    }
+}
 
 #[derive(Clone, Debug)]
 pub struct Peer {

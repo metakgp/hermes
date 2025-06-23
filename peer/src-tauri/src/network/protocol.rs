@@ -14,7 +14,7 @@ use serde::Serialize;
 use std::path::Path;
 use std::path::PathBuf;
 use tauri::AppHandle;
-use tauri::Emitter;
+use tracing::{info, trace};
 pub const ALPN: &[u8] = b"hermes/file-protocol/0";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -88,7 +88,7 @@ impl ProtocolHandler for FileProtocol {
         let this = self.clone();
         Box::pin(async move {
             let node_id = connection.remote_node_id()?;
-            println!("accepted connection from {node_id}");
+            trace!("accepted connection from {node_id}");
             let (mut send, mut recv) = connection.accept_bi().await?;
 
             // Could be used to handle different protocol versions in the future
@@ -99,7 +99,7 @@ impl ProtocolHandler for FileProtocol {
                 let command: ProtocolRequestCommand = recv_msg(&mut recv).await?;
                 match command {
                     ProtocolRequestCommand::Ping => {
-                        println!("Received ping, sending pong.");
+                        info!("Received ping, sending pong.");
                         let response = ProtocolResponseCommand::Pong;
                         send_msg(&mut send, &response).await?;
                     }
@@ -115,7 +115,7 @@ impl ProtocolHandler for FileProtocol {
                         send_msg(&mut send, &response).await?;
                     }
                     ProtocolRequestCommand::Quit => {
-                        println!("Received quit command, closing connection.");
+                        trace!("Received quit command, closing connection.");
                         break;
                     }
                 }
@@ -204,8 +204,6 @@ impl FileProtocol {
     /// If the input is a directory, the collection contains all the files in the
     /// directory.
     pub async fn import(&self, path: impl AsRef<Path>) -> Result<(iroh_blobs::Tag, Hash)> {
-        let path_str = path.as_ref().to_string_lossy().to_string();
-        let _ = self.app_handle.emit("file-import-started", &path_str);
         let batch = self.blobs_client.batch().await?;
         let path = path.as_ref();
         let temp_tag = batch
@@ -223,11 +221,7 @@ impl FileProtocol {
         let hash = *temp_tag.hash();
         batch.persist_to(temp_tag, tag.clone()).await?;
         drop(batch);
-        let _ = self.app_handle.emit(
-            &format!("file-imported::{}", path_str),
-            path.to_string_lossy().to_string(),
-        );
-        println!("Imported {} with hash {}", path.display(), hash);
+        info!("Imported {} with hash {}", path.display(), hash);
         Ok((tag, hash))
     }
 
@@ -320,9 +314,9 @@ pub mod client {
         let (mut send, mut recv) = conn.open_bi().await?;
         negotiate_version(&mut send, &mut recv, ConnectionRole::Initiator).await?;
         send_msg(&mut send, &ProtocolRequestCommand::Ping).await?;
-        println!("Sent ping to {}", &node_addr.node_id);
+        info!("Sent ping to {}", &node_addr.node_id);
         let recv: ProtocolResponseCommand = recv_msg(&mut recv).await?;
-        println!("Received response: {:?}", recv);
+        info!("Received response: {:?}", recv);
         Ok(())
     }
 

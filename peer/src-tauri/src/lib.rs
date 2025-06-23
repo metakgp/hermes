@@ -63,19 +63,7 @@ async fn ping_peer(
     let endpoint = state.router.clone().unwrap().endpoint().clone();
     let node_id =
         iroh::NodeId::from_str(peer_id.as_str()).map_err(|_| "Invalid node ID".to_string())?;
-    let node_addr = state
-        .peers
-        .lock()
-        .await
-        .iter()
-        .find_map(|peer| {
-            if peer.node_addr.node_id == node_id {
-                Some(peer.node_addr.clone())
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| "Peer not found".to_string())?;
+    let node_addr = state.get_node_addr(node_id).await.map_err(|err| err.to_string())?;
     crate::network::protocol::client::ping_peer(&endpoint, node_addr)
         .await
         .map_err(|err| err.to_string())
@@ -125,19 +113,7 @@ async fn get_remote_files(
         .ok_or("Endpoint not initialized")?
         .endpoint()
         .clone();
-    let node_addr = state
-        .peers
-        .lock()
-        .await
-        .iter()
-        .find_map(|peer| {
-            if peer.node_addr.node_id == node_id {
-                Some(peer.node_addr.clone())
-            } else {
-                None
-            }
-        })
-        .ok_or_else(|| "Peer not found".to_string())?;
+    let node_addr = state.get_node_addr(node_id).await.map_err(|err| err.to_string())?;
     list_remote_files(&endpoint, node_addr, None)
         .await
         .map_err(|err| err.to_string())
