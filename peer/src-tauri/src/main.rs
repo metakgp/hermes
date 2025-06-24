@@ -1,8 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod global;
+
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::EnvFilter;
+
+use crate::global::APP_DATA_DIR;
 
 fn setup_logging() -> Option<WorkerGuard> {
     let subscriber = tracing_subscriber::fmt()
@@ -14,7 +18,7 @@ fn setup_logging() -> Option<WorkerGuard> {
         None
     } else {
         let (writer, _guard) = {
-            let file_appender = tracing_appender::rolling::daily("logs", "hermes.log");
+            let file_appender = tracing_appender::rolling::daily(APP_DATA_DIR.join("logs"), "hermes.log");
             tracing_appender::non_blocking(file_appender)
         };
 
