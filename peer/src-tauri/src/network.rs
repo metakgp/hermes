@@ -8,17 +8,20 @@ use tauri::Emitter;
 use tauri::{AppHandle, Manager};
 use tokio::sync::Mutex;
 use tokio::time::Instant;
+use tracing::{instrument, info, error};
 
 use crate::state::Peer;
 use crate::state::PeerSerializable;
 use crate::state::AppStateWrapper;
 
+#[instrument(ret, err)]
 pub async fn setup_iroh() -> Result<Endpoint> {
     // TODO set username on discovery
     let endpoint = Endpoint::builder().discovery_local_network().bind().await?;
     Ok(endpoint)
 }
 
+#[instrument(skip_all, ret, err)]
 pub async fn run_discovery(app: AppHandle) -> Result<()> {
     let state_lock = app
         .try_state::<AppStateWrapper>()
@@ -65,21 +68,25 @@ pub async fn run_discovery(app: AppHandle) -> Result<()> {
                         let payload: (PeerSerializable, PeerSerializable) =
                             (old_peer.clone().into(), peer.clone().into());
                         let _ = app.emit("peer::username_changed", payload);
-                        println!(
-                            "Peer username changed: {} -> {}",
-                            old_peer.username, peer.username
+                        info!(
+                            old_username = old_peer.username,
+                            new_username = peer.username, 
+                            "Peer username changed: {} -> {}", old_peer.username, peer.username
                         );
                         *old_peer = peer;
                     } else if !peer_lock.iter().any(|p| p.node_id == peer.node_id) {
                         peer_lock.push(peer.clone());
                         let payload: PeerSerializable = peer.clone().into();
                         let _ = app.emit("peer::added", payload);
-                        println!("New peer added: {}", peer.username);
+                        info!(
+                            new_peer_username = peer.username,
+                            "New peer added: {}", peer.username
+                        );
                     }
                 }
             }
             Err(e) => {
-                eprintln!("Lagged or stream error: {:?}", e);
+                error!(Error = ?e, "Lagged or stream error: {:?}", e);
             }
         }
     }
