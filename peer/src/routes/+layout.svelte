@@ -41,6 +41,10 @@
       unlisteners.push(unlisten);
     });
   });
+
+  onDestroy(() => {
+    unlisteners.forEach((unlisten) => unlisten());
+  });
 </script>
 
 <ModeWatcher defaultMode="dark" />
