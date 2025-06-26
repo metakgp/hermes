@@ -9,7 +9,6 @@
     type TreeNode,
   } from "$lib/components/custom/directorytree.svelte";
   import { toast } from "svelte-sonner";
-  import Progress from "@/components/ui/progress/progress.svelte";
   let rootNode: TreeNode[] = $state([]);
   onMount(() => {
     // This will run when the component is mounted
