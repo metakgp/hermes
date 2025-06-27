@@ -3,16 +3,32 @@
   import { Label } from "$lib/components/ui/label/index.js";
   import { open } from "@tauri-apps/plugin-dialog";
   import { invoke } from "@tauri-apps/api/core";
-  import { onMount } from "svelte";
+  import { onDestroy, onMount } from "svelte";
   import { Trash2 } from "@lucide/svelte";
   import DirectoryTree, {
     type TreeNode,
   } from "$lib/components/custom/directorytree.svelte";
   import { toast } from "svelte-sonner";
+  import type { UnlistenFn } from "@tauri-apps/api/event";
+  import { getCurrentWebview } from "@tauri-apps/api/webview";
   let rootNode: TreeNode[] = $state([]);
+  const unlisteners: Array<UnlistenFn> = [];
   onMount(() => {
     // This will run when the component is mounted
     loadFiles();
+    getCurrentWebview()
+      .onDragDropEvent(async (event) => {
+        if (event.payload.type === "drop") {
+          const paths = event.payload.paths;
+          await addPaths(paths);
+        }
+      })
+      .then((unlisten) => {
+        unlisteners.push(unlisten);
+      });
+  });
+  onDestroy(() => {
+    unlisteners.forEach((unlisten) => unlisten());
   });
 
   async function pickFolder() {
@@ -26,6 +42,9 @@
       return;
     }
     const folderPaths = Array.isArray(selected) ? selected : [selected];
+    await addPaths(folderPaths);
+  }
+  async function addPaths(folderPaths: string[]) {
     const importPromises = folderPaths.map(async (folderPath) => {
       try {
         await invoke("add_path", { path: folderPath });
@@ -35,7 +54,8 @@
       }
     });
 
-    toast.promise(Promise.all(importPromises), {
+     const allPromises = Promise.all(importPromises);
+    toast.promise(allPromises, {
       loading: `Adding ${folderPaths.length} folder(s)...`,
       success: (results) => {
         const len = results.length;
@@ -45,9 +65,8 @@
         return `While adding folder: ${e.folderPath} encountered an error: ${e.error}`;
       },
     });
-    Promise.all(importPromises).then((res) => {
-      loadFiles();
-    });
+    await allPromises;
+    loadFiles();
   }
   async function clearAll() {
     await invoke("clear_files").then((res) => {
