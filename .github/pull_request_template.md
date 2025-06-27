@@ -4,3 +4,4 @@ Please include a summary of the changes and the related issue. Please also inclu
 Fixes # (link issue here if applicable)
 
 - [ ] I have updated the relevant documentation
+- [ ] I have added consistent logging in my code
