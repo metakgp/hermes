@@ -1,29 +1,72 @@
+mod global;
 mod network;
 mod state;
 mod utils;
-use tracing::{instrument, trace, debug, info, error, warn};
+use iroh::NodeId;
+use network::protocol::{client::list_remote_files, TreeNode};
+use std::{path::PathBuf, str::FromStr, sync::Arc};
 use tokio::sync::Mutex;
-use std::sync::Arc;
+use tracing::{debug, error, info, instrument, trace, warn};
 
-use crate::state::{AppState, PeerSerializable, File, AppStateWrapper};
+use crate::state::{AppState, AppStateWrapper, PeerSerializable};
 use anyhow::Result;
 use tauri::Manager;
 
-#[instrument(skip_all, ret, err)]
+#[instrument(skip(state), ret, err)]
 #[tauri::command]
-async fn get_paths(state: tauri::State<'_, AppStateWrapper>) -> Result<Vec<String>, String> {
-    Ok(state.0.lock().await.shared_path_string())
+async fn add_path(path: String, state: tauri::State<'_, AppStateWrapper>) -> Result<(), String> {
+    let state = state.0.lock().await;
+    let path = PathBuf::from(path);
+    if !path.is_absolute() {
+        return Err("Path must be absolute".to_string());
+    }
+    if !path.exists() {
+        return Err("Path does not exist".to_string());
+    }
+    state
+        .file_protocol
+        .clone()
+        .ok_or("File protocol not initialized")?
+        .import(path)
+        .await
+        .map_err(|err| err.to_string())?;
+    Ok(())
 }
 
 #[instrument(skip(state), ret, err)]
 #[tauri::command]
-async fn add_path(
-    path: String,
+async fn get_uploaded_files_tree(
     state: tauri::State<'_, AppStateWrapper>,
-) -> Result<Vec<String>, String> {
-    let mut state = state.0.lock().await;
-    state.add_path(path).map_err(|err| err.to_string())?;
-    Ok(state.shared_path_string())
+) -> Result<Vec<network::protocol::TreeNode>, String> {
+    let state = state.0.lock().await;
+    let file_protocol = state
+        .file_protocol
+        .as_ref()
+        .ok_or("File protocol not initialized")?;
+
+    file_protocol
+        .get_files_tree(None)
+        .await
+        .map_err(|e| format!("Failed to get files tree: {}", e))
+}
+
+#[instrument(skip(state), ret, err)]
+#[tauri::command]
+async fn ping_peer(
+    peer_id: String,
+    state: tauri::State<'_, AppStateWrapper>,
+) -> Result<(), String> {
+    let state = state.0.lock().await;
+    if state.router.is_none() {
+        return Err("Endpoint not initialized".to_string());
+    }
+    let endpoint = state.router.clone().unwrap().endpoint().clone();
+    let node_id =
+        iroh::NodeId::from_str(peer_id.as_str()).map_err(|_| "Invalid node ID".to_string())?;
+    let node_addr = state.get_node_addr(node_id).await.map_err(|err| err.to_string())?;
+    crate::network::protocol::client::ping_peer(&endpoint, node_addr)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 #[instrument(skip(state, app), ret, err)]
@@ -34,10 +77,14 @@ async fn set_username(
     app: tauri::AppHandle,
 ) -> Result<(), String> {
     let mut state = state.0.lock().await;
-    if state.endpoint.is_none() {
-        state.spawn_endpoint().await.map_err(|err| err.to_string())?;
+    if state.router.is_none() {
+        state
+            .spawn_endpoint(app.clone())
+            .await
+            .map_err(|err| err.to_string())?;
     }
-    state.update_username(username)
+    state
+        .update_username(username)
         .map_err(|err| err.to_string())?;
     state.start_discovery(app); // TODO Move this to a better place
     Ok(())
@@ -45,31 +92,53 @@ async fn set_username(
 
 #[instrument(skip_all, ret, err)]
 #[tauri::command]
-async fn get_username(
-    state: tauri::State<'_, AppStateWrapper>,
-) -> Result<String, String> {
+async fn get_username(state: tauri::State<'_, AppStateWrapper>) -> Result<String, String> {
     let state = state.0.lock().await;
-    state.get_username().clone().ok_or_else(|| "Username not set".to_string())
+    state
+        .get_username()
+        .clone()
+        .ok_or_else(|| "Username not set".to_string())
 }
 
-#[instrument(skip_all, ret, err)]
+#[instrument(skip(state), ret, err)]
 #[tauri::command]
-async fn get_files(state: tauri::State<'_, AppStateWrapper>) -> Result<Vec<File>, String> {
+async fn get_remote_files(
+    state: tauri::State<'_, AppStateWrapper>,
+    node_id: NodeId,
+) -> Result<Vec<TreeNode>, String> {
     let state = state.0.lock().await;
-    Ok(state.files.clone())
+    let endpoint = state
+        .router
+        .clone()
+        .ok_or("Endpoint not initialized")?
+        .endpoint()
+        .clone();
+    let node_addr = state.get_node_addr(node_id).await.map_err(|err| err.to_string())?;
+    list_remote_files(&endpoint, node_addr, None)
+        .await
+        .map_err(|err| err.to_string())
 }
 
 #[instrument(skip_all, ret, err)]
 #[tauri::command]
 async fn clear_files(state: tauri::State<'_, AppStateWrapper>) -> Result<(), String> {
     let mut state = state.0.lock().await;
-    state.clear_files();
+    state
+        .file_protocol
+        .as_mut()
+        .ok_or("File protocol not initialized")?
+        .clear_all_files()
+        .await
+        .map_err(|err| err.to_string())?;
     Ok(())
 }
 
 #[instrument(skip_all, ret, err)]
 #[tauri::command]
-async fn get_peers(state: tauri::State<'_, AppStateWrapper>, app: tauri::AppHandle) -> Result<Vec<PeerSerializable>, String> {
+async fn get_peers(
+    state: tauri::State<'_, AppStateWrapper>,
+    app: tauri::AppHandle,
+) -> Result<Vec<PeerSerializable>, String> {
     let mut state = state.0.lock().await;
     state.get_peers(app).await.map_err(|err| err.to_string())
 }
@@ -97,18 +166,21 @@ pub fn run() {
                 let window = app.get_webview_window("main").unwrap();
                 window.open_devtools();
             }
-            app.manage(AppStateWrapper(Arc::new(Mutex::new(AppState::new().expect("Failed to create AppState")))));
+            app.manage(AppStateWrapper(Arc::new(Mutex::new(
+                AppState::new().expect("Failed to create AppState"),
+            ))));
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             set_username,
             get_username,
-            get_paths,
             add_path,
-            get_files,
             clear_files,
             get_peers,
-            log
+            log,
+            ping_peer,
+            get_uploaded_files_tree,
+            get_remote_files,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

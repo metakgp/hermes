@@ -1,18 +1,21 @@
-use anyhow::Result;
-use std::{collections::HashSet, path::PathBuf};
+use anyhow::{Context, Result};
+use iroh::protocol::Router;
+use iroh::Endpoint;
+use std::sync::Arc;
 use tauri::AppHandle;
 use tokio::sync::Mutex;
-use std::sync::Arc;
 
-use crate::network::{setup_iroh, run_discovery};
+use crate::network::discovery::run_discovery;
+use crate::network::protocol::FileProtocol;
+use crate::network::protocol::ALPN;
+use iroh_blobs::net_protocol::Blobs;
 
 #[derive(Debug)]
 pub struct AppState {
-    shared_path: HashSet<PathBuf>,
-    pub files: Vec<File>,
-    pub endpoint: Option<iroh::endpoint::Endpoint>,
+    pub router: Option<iroh::protocol::Router>,
     username: Option<String>,
     discovery_task: Option<tokio::task::JoinHandle<()>>,
+    pub file_protocol: Option<FileProtocol>,
     pub peers: Arc<Mutex<Vec<Peer>>>,
 }
 
@@ -22,75 +25,40 @@ impl AppState {
     pub fn new() -> Result<Self> {
         //let endpoint = setup_iroh(None).await?;
         Ok(Self {
-            shared_path: HashSet::new(),
-            files: Vec::new(),
             peers: Arc::new(Mutex::new(Vec::new())),
-            endpoint: None,
+            router: None,
             username: None,
             discovery_task: None,
+            file_protocol: None,
         })
     }
 
-    pub async fn spawn_endpoint(&mut self) -> Result<()> {
-        self.endpoint = Some(setup_iroh().await?);
-        Ok(())
-    }
-
-
-    pub fn shared_path_string(&self) -> Vec<String> {
-        self.shared_path
-            .clone()
-            .into_iter()
-            .map(|p| p.to_string_lossy().to_string())
-            .collect()
-    }
-
-    pub fn clear_files(&mut self) {
-        self.files.clear();
-        self.shared_path.clear();
-    }
-    pub fn add_path(&mut self, path: impl Into<PathBuf>) -> Result<()> {
-        self.shared_path.insert(path.into());
-        self.update_files()?;
-        Ok(())
-    }
-
-    pub fn update_files(&mut self) -> Result<()> {
-        use std::fs;
-        println!("Scanning shared path");
-        self.files.clear();
-        for dirpath in &self.shared_path {
-            println!("Scanning {}", dirpath.display());
-            let paths = fs::read_dir(dirpath)?;
-            for path in paths {
-                let path = path?;
-
-                // Skip directories and non-existent paths
-                if !path.file_type()?.is_file() {
-                    continue;
-                }
-
-                // Get file name
-                let name = path.file_name().to_string_lossy().into_owned();
-
-                // Get file metadata for size
-                let metadata = fs::metadata(path.path())?;
-
-                let size = metadata.len().to_string();
-
-                let hash = String::from("test");
-
-                self.files.push(File { name, hash, size });
-            }
+    pub async fn spawn_endpoint(&mut self, app: AppHandle) -> Result<()> {
+        if self.router.is_some() {
+            return Ok(());
         }
+        let blobs_data_dir = crate::global::APP_DATA_DIR.join("blobs");
+        let endpoint = Endpoint::builder().discovery_local_network().bind().await?;
+        let blobs = Blobs::persistent(&blobs_data_dir).await?.build(&endpoint);
 
+        // TODO Recover uploaded_files from previous session
+        let proto = FileProtocol::new(blobs.client().clone(), app);
+        let router = Router::builder(endpoint.clone())
+            .accept(iroh_blobs::ALPN, blobs.clone())
+            .accept(ALPN, proto.clone())
+            .spawn();
+
+        self.router = Some(router);
+        self.file_protocol = Some(proto.clone());
         Ok(())
     }
 
     pub fn update_username(&mut self, username: String) -> Result<()> {
-        match &mut self.endpoint {
-            Some(endpoint) => {
-                endpoint.set_user_data_for_discovery(Some(username.clone().try_into()?));
+        match &mut self.router {
+            Some(router) => {
+                router
+                    .endpoint()
+                    .set_user_data_for_discovery(Some(username.clone().try_into()?));
                 self.username = Some(username);
                 Ok(())
             }
@@ -109,7 +77,14 @@ impl AppState {
         if self.discovery_task.is_none() {
             self.start_discovery(app);
         }
-        Ok(self.peers.lock().await.clone().iter().map(|p| p.clone().into()).collect())
+        Ok(self
+            .peers
+            .lock()
+            .await
+            .clone()
+            .iter()
+            .map(|p| p.clone().into())
+            .collect())
     }
     pub fn start_discovery(&mut self, app: AppHandle) {
         if let Some(guard) = &self.discovery_task {
@@ -130,22 +105,28 @@ impl AppState {
         self.discovery_task = Some(handle);
     }
 
-}
-
-#[derive(Clone, serde::Serialize, Debug)]
-pub struct File {
-    name: String,
-    hash: String,
-    size: String,
+    pub async fn get_node_addr(&self, node_id: iroh::NodeId) -> Result<iroh::NodeAddr> {
+        self.peers
+            .lock()
+            .await
+            .iter()
+            .find_map(|peer| {
+                if peer.node_addr.node_id == node_id {
+                    Some(peer.node_addr.clone())
+                } else {
+                    None
+                }
+            })
+            .context("Peer not found")
+    }
 }
 
 #[derive(Clone, Debug)]
 pub struct Peer {
     pub username: String,
-    pub node_id: iroh::NodeId,
+    pub node_addr: iroh::NodeAddr,
     pub last_seen: tokio::time::Instant,
 }
-
 
 #[derive(Clone, serde::Serialize, Debug)]
 pub struct PeerSerializable {
@@ -157,8 +138,7 @@ impl From<Peer> for PeerSerializable {
     fn from(peer: Peer) -> Self {
         Self {
             username: peer.username,
-            node_id: peer.node_id,
+            node_id: peer.node_addr.node_id,
         }
     }
 }
-

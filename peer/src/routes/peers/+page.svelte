@@ -5,47 +5,62 @@
   import File from "@lucide/svelte/icons/file";
   import Handshake from "@lucide/svelte/icons/handshake";
   import MessageSquareText from "@lucide/svelte/icons/message-square-text";
-  import { Button } from "$lib/components/ui/button/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
   import * as DropdownMenu from "$lib/components/ui/dropdown-menu/index.js";
   import { invoke } from "@tauri-apps/api/core";
-  import { listen } from "@tauri-apps/api/event";
-    import { get } from "svelte/store";
+  import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+  import { toast } from "svelte-sonner";
+  import { onDestroy, onMount } from "svelte";
 
   interface Peer {
     username: string;
     node_id: string;
   }
-  let peers: Peer[] = $state([ ]);
-  $effect(() => {
-    console.log("PeersTab component mounted");
+  let peers: Peer[] = $state([]);
+  let listeners: Array<UnlistenFn> = [];
+  onMount(() => {
     invoke("get_peers")
       .then((data) => {
-        console.log("Fetched peers:", data);
         peers = data as Peer[];
       })
       .catch((error) => {
-        console.error("Error fetching peers:", error);
+        toast.error("Error fetching peers: " + error);
       });
+    listen<Peer>("peer::added", () => {
+      getPeers();
+    }).then((unlisten) => {
+      listeners.push(unlisten);
+    });
+    listen<[Peer, Peer]>("peer::username_changed", () => {
+      getPeers();
+    }).then((unlisten) => {
+      listeners.push(unlisten);
+    });
+    listen<Peer>("peer::left", () => {
+      getPeers();
+    }).then((unlisten) => {
+      listeners.push(unlisten);
+    });
   });
-  
-  listen<Peer>('peer::added', () => {
-    getPeers();
-  });
-  listen<[Peer, Peer]>('peer::username_changed', () => {
-    getPeers();
-  });
-  listen<Peer>('peer::left', () => {
-    getPeers();
+
+  onDestroy(() => {
+    listeners.forEach((unlisten) => unlisten());
   });
   function getPeers() {
     invoke("get_peers")
       .then((data) => {
-        console.log("Fetched peers:", data);
         peers = data as Peer[];
       })
       .catch((error) => {
-        console.error("Error fetching peers:", error);
+        toast.error("Error fetching peers: " + error);
+      });
+  }
+  function pingPeer(nodeId: string) {
+    invoke("ping_peer", { peerId: nodeId })
+      .then((response) => {
+        toast.success(`Pinged peer ${nodeId} successfully!`);
+      })
+      .catch((error) => {
+        toast.error(`Error pinging peer ${nodeId}: ${error}`);
       });
   }
 </script>
@@ -75,10 +90,16 @@
               <DropdownMenu.Content>
                 <DropdownMenu.Group>
                   <DropdownMenu.Item
-                    ><MessageSquareText /> Shared Files</DropdownMenu.Item
+                    ><a
+                      href={`/peer?nodeid=${encodeURIComponent(peer.node_id)}`}
+                      ><File /> Shared Files</a
+                    ></DropdownMenu.Item
                   >
                   <DropdownMenu.Item
                     ><Handshake /> Add as Friend</DropdownMenu.Item
+                  >
+                  <DropdownMenu.Item onclick={() => pingPeer(peer.node_id)}
+                    ><Handshake /> Ping</DropdownMenu.Item
                   >
                   <DropdownMenu.Item
                     ><MessageSquareText /> Message</DropdownMenu.Item

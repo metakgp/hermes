@@ -1,0 +1,123 @@
+use std::sync::Arc;
+
+use anyhow::anyhow;
+use anyhow::Result;
+use futures_lite::StreamExt;
+use tauri::Emitter;
+use tauri::{AppHandle, Manager};
+use tokio::sync::Mutex;
+use tokio::time::Instant;
+
+use crate::state::AppStateWrapper;
+use crate::state::Peer;
+use crate::state::PeerSerializable;
+use tracing::{error, info, instrument};
+
+#[instrument(skip_all, ret, err)]
+pub async fn run_discovery(app: AppHandle) -> Result<()> {
+    let state_lock = app
+        .try_state::<AppStateWrapper>()
+        .ok_or_else(|| anyhow!("Error accessing AppState"))?; // `state_lock` lives long enough
+
+    let mut state = state_lock.0.lock().await;
+
+    let mut stream = state.router.as_mut().unwrap().endpoint().discovery_stream();
+    let peers = Arc::clone(&state.peers);
+    drop(state);
+    let cleaner_handle = tokio::spawn(background_cleanup_task(
+        Arc::clone(&peers),
+        app.clone(),
+        tokio::time::Duration::from_secs(10), // TODO make this configurable
+    ));
+
+    while let Some(event) = stream.next().await {
+        match event {
+            Ok(discovery_item) => {
+                let node_addr = discovery_item.clone().into_node_addr();
+
+                let user_data = discovery_item
+                    .node_info()
+                    .data
+                    .user_data()
+                    .map(|ud| ud.as_ref())
+                    .unwrap_or("");
+
+                // TODO verify username is with the host
+                //if !host.contains(&user_data) {
+                //    continue;
+                //}
+                let peer = Peer {
+                    node_addr,
+                    username: user_data.to_owned(),
+                    last_seen: Instant::now(),
+                };
+
+                {
+                    let mut peer_lock = peers.lock().await;
+                    if let Some(old_peer) = peer_lock.iter_mut().find(|p| {
+                        p.node_addr.node_id == peer.node_addr.node_id && p.username != peer.username
+                    }) {
+                        let payload: (PeerSerializable, PeerSerializable) =
+                            (old_peer.clone().into(), peer.clone().into());
+                        let _ = app.emit("peer::username_changed", payload);
+                        info!(
+                            "Peer username changed: {} -> {}",
+                            old_peer.username, peer.username
+                        );
+                        *old_peer = peer;
+                    } else if !peer_lock
+                        .iter()
+                        .any(|p| p.node_addr.node_id == peer.node_addr.node_id)
+                    {
+                        peer_lock.push(peer.clone());
+                        let payload: PeerSerializable = peer.clone().into();
+                        let _ = app.emit("peer::added", payload);
+                        info!("New peer added: {}", peer.username);
+                    } else {
+                        // Update last seen time for existing peer
+                        if let Some(existing_peer) = peer_lock
+                            .iter_mut()
+                            .find(|p| p.node_addr.node_id == peer.node_addr.node_id)
+                        {
+                            existing_peer.last_seen = Instant::now();
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                error!("Lagged or stream error: {:?}", e);
+            }
+        }
+    }
+    cleaner_handle.abort();
+
+    Ok(())
+}
+
+/// Periodically checks for peers that have not been seen within the timeout period,
+/// removes them from the tracker, and emits a "peer::left" event for each.
+#[instrument(skip(peers, app))]
+pub async fn background_cleanup_task(
+    peers: Arc<Mutex<Vec<Peer>>>,
+    app: AppHandle,
+    timeout: tokio::time::Duration,
+) {
+    let mut interval = tokio::time::interval(timeout);
+    loop {
+        interval.tick().await;
+        let mut peers_lock = peers.lock().await;
+
+        let left_peers: Vec<Peer> = peers_lock
+            .iter()
+            .filter(|peer| Instant::now().duration_since(peer.last_seen) > timeout)
+            .cloned()
+            .collect();
+
+        for left_peer in left_peers {
+            peers_lock.retain(|p| p.node_addr.node_id != left_peer.node_addr.node_id);
+            let payload: PeerSerializable = left_peer.clone().into();
+            let _ = app.emit("peer::left", payload);
+            info!("Peer left: {}", left_peer.username);
+        }
+    }
+}
