@@ -135,6 +135,25 @@ async fn clear_files(state: tauri::State<'_, AppStateWrapper>) -> Result<(), Str
 
 #[instrument(skip_all, ret, err)]
 #[tauri::command]
+async fn remove_files(
+    state: tauri::State<'_, AppStateWrapper>,
+    node_hashes: Vec<String>
+) -> Result<(), String> {
+    let mut state = state.0.lock().await;
+
+    let file_protocol = state.file_protocol.as_mut().ok_or("No file protocol found")?;
+
+    for node_hash in node_hashes {
+        file_protocol.remove_by_hash(&node_hash)
+            .await
+            .map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
+#[instrument(skip_all, ret, err)]
+#[tauri::command]
 async fn get_peers(
     state: tauri::State<'_, AppStateWrapper>,
     app: tauri::AppHandle,
@@ -181,6 +200,7 @@ pub fn run() {
             ping_peer,
             get_uploaded_files_tree,
             get_remote_files,
+            remove_files
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

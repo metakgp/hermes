@@ -229,6 +229,22 @@ impl FileProtocol {
         self.blobs_client.tags().delete_all().await?;
         Ok(())
     }
+
+    pub async fn remove_by_hash(&mut self, node_hash: &str) -> Result<()> {
+        let mut tag_stream = self.blobs_client.tags().list().await?;
+        while let Some(tag) = tag_stream.next().await {
+            let tag_info = tag?;
+            let collection = self.blobs_client.get_collection(tag_info.hash).await?;
+            for (_name, file_hash) in collection.iter() {
+                if file_hash.to_string() == node_hash {
+                    self.blobs_client.tags().delete(tag_info.name.clone()).await?;
+                    return Ok(());
+                }
+            }
+        }
+        Err(anyhow::anyhow!("No tag found for file hash {}", node_hash))
+    }
+
 }
 
 enum ConnectionRole {

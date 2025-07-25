@@ -54,7 +54,7 @@
       }
     });
 
-     const allPromises = Promise.all(importPromises);
+    const allPromises = Promise.all(importPromises);
     toast.promise(allPromises, {
       loading: `Adding ${folderPaths.length} folder(s)...`,
       success: (results) => {
@@ -80,8 +80,21 @@
       })
       .catch((e) => toast.error(`Error loading files: ${e}`));
   }
-  function handleRemove(selectedNodesList: TreeNode[]) {
-    // TODO
+  async function handleRemove(selectedNodesList: TreeNode[]) {
+    if (!selectedNodesList.length) {
+      toast.error("No files selected.");
+      return;
+    }
+
+    const nodeHashes = selectedNodesList.map((node) => node.hash);
+    await toast.promise(
+      invoke("remove_files", { nodeHashes }).then(() => loadFiles()),
+      {
+        loading: "Removing...",
+        success: "Successfully removed files!",
+        error: (e) => `Error removing: ${e}`,
+      }
+    );
   }
 </script>
 
