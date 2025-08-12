@@ -35,7 +35,7 @@
 </script>
 <div class="flex">
 
-<Sidebar.Root>
+<Sidebar.Root collapsible="icon">
   <Sidebar.Content>
     <Sidebar.Group>
       <Sidebar.GroupLabel>Application</Sidebar.GroupLabel>
