@@ -4,6 +4,7 @@
   import MessageSquare from "@lucide/svelte/icons/message-square";
   import CircleUser from "@lucide/svelte/icons/circle-user";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
+  import { page } from "$app/stores";
 
   const nav = [
     {
@@ -35,7 +36,7 @@
 </script>
 <div class="flex">
 
-<Sidebar.Root>
+<Sidebar.Root collapsible="icon">
   <Sidebar.Content>
     <Sidebar.Group>
       <Sidebar.GroupLabel>Application</Sidebar.GroupLabel>
@@ -43,7 +44,7 @@
         <Sidebar.Menu>
           {#each nav as item (item.name)}
             <Sidebar.MenuItem>
-              <Sidebar.MenuButton>
+              <Sidebar.MenuButton isActive={item.route === $page.url.pathname}>
                 {#snippet child({ props })}
                   <a href={item.route} {...props}>
                     <item.icon />
