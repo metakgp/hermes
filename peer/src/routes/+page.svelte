@@ -1,7 +1,7 @@
 <script lang="ts">
   import { Input } from "$lib/components/ui/input/index.js";
   import { Button } from "$lib/components/ui/button/index.js";
-  import { Label } from "$lib/components/ui/label/index.js";
+  import * as Card from "$lib/components/ui/card/index.js";
   import { invoke } from "@tauri-apps/api/core";
   import { toast } from "svelte-sonner";
   let username = $state("");
@@ -41,19 +41,24 @@
   }
 </script>
 
-<div class="flex w-full max-w-sm flex-col gap-1.5">
-  <Label for="username">Username</Label>
-  <Input
-    type="text"
-    placeholder="Username"
-    bind:value={username}
-    aria-invalid={!isUsernameValid}
-  />
-  <Button class="mt-2" disabled={!isUsernameValid} onclick={submitUsername}>
-    Submit
-  </Button>
-
-  <p class="text-muted-foreground text-sm">
-    Enter your username. Between 3 and 20 characters.
-  </p>
+<div class="flex h-full justify-center items-center">
+  <Card.Root class="w-full max-w-sm">
+    <Card.Header>
+      <Card.Title>Username</Card.Title>
+      <Card.Description>
+        Enter your username. Between 3 and 20 characters.
+      </Card.Description>
+    </Card.Header>
+    <Card.Content class="flex flex-col gap-2 mt-2">
+      <Input
+        type="text"
+        placeholder="Username"
+        bind:value={username}
+        aria-invalid={!isUsernameValid}
+      />
+      <Button class="w-full mt-2 mb-2" disabled={!isUsernameValid} onclick={submitUsername}>
+        Submit
+      </Button>
+    </Card.Content>
+  </Card.Root>
 </div>
