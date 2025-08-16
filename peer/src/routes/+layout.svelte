@@ -1,6 +1,6 @@
 <script lang="ts">
   import { ModeWatcher } from "mode-watcher";
-  import { AppSidebar } from "$lib/components/custom/index.js";
+  import { AppSidebar, ThemeToggle } from "$lib/components/custom/index.js";
   import * as Sidebar from "$lib/components/ui/sidebar/index.js";
   import { Toaster } from "$lib/components/ui/sonner/index.js";
   import { toast } from "svelte-sonner";
@@ -51,8 +51,11 @@
 <div class="flex h-screen">
   <Sidebar.Provider>
     <AppSidebar />
-    <main>
-      <Sidebar.Trigger />
+    <main class="w-full flex flex-col flex-1">
+      <div class="flex flex-row items-center justify-between">
+        <Sidebar.Trigger />
+        <ThemeToggle />
+      </div>
       {@render children?.()}
     </main>
   </Sidebar.Provider>
