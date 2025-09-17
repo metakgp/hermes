@@ -161,6 +161,7 @@ The currently active maintainer(s) of this project.
 
 - [Yogansh Sharma](https://github.com/YoganshSharma)
 - [Jeffrey Samuel](https://github.com/Signor-Koala)
+- [Dhanvith Nayak](https://github.com/dhanvithnayak)
 
 <p align="right">(<a href="#top">back to top</a>)</p>
 
