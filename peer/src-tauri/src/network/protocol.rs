@@ -243,6 +243,7 @@ impl FileProtocol {
         }
         Err(anyhow::anyhow!("No tag found for file hash {}", node_hash))
     }
+}
 
 /// Recursively filters a file tree by name, size range and node type.
 /// A node is kept if it matches the filter itself or has matching descendants.
