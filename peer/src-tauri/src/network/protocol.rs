@@ -106,8 +106,7 @@ impl ProtocolHandler for FileProtocol {
                     ProtocolRequestCommand::ListFileRequest { filter } => {
                         let files = if let Some(filter) = filter {
                             let uploaded_files = this.get_files_tree(filter.depth).await?;
-                            // TODO implement filtering logic
-                            uploaded_files
+                            apply_filter(&uploaded_files, &filter)
                         } else {
                             this.get_files_tree(None).await?
                         };
@@ -244,7 +243,46 @@ impl FileProtocol {
         }
         Err(anyhow::anyhow!("No tag found for file hash {}", node_hash))
     }
+}
 
+/// Recursively filters a file tree by name, size range and node type.
+/// A node is kept if it matches the filter itself or has matching descendants.
+fn apply_filter(nodes: &[TreeNode], filter: &FileFilter) -> Vec<TreeNode> {
+    let mut result = Vec::new();
+    for node in nodes {
+        let mut node = node.clone();
+        if let Some(children) = &node.children {
+            node.children = Some(apply_filter(children, filter));
+        }
+        let has_matching_children = node.children.as_ref().is_some_and(|c| !c.is_empty());
+        if matches_filter(&node, filter) || has_matching_children {
+            result.push(node);
+        }
+    }
+    result
+}
+
+fn matches_filter(node: &TreeNode, filter: &FileFilter) -> bool {
+    if let Some(name) = &filter.name {
+        if !node.name.to_lowercase().contains(&name.to_lowercase()) {
+            return false;
+        }
+    }
+    if let Some((min, max)) = filter.size_range {
+        if let Some(size) = node.size {
+            if size < min || size > max {
+                return false;
+            }
+        } else {
+            return false;
+        }
+    }
+    if let Some(is_dir) = filter.is_dir {
+        if node.children.is_some() != is_dir {
+            return false;
+        }
+    }
+    true
 }
 
 enum ConnectionRole {
